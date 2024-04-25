@@ -1,3 +1,5 @@
+#![allow(unused_parens)]
+
 use clap::Parser;
 use std::fs::File;
 use std::path::PathBuf;
@@ -47,6 +49,11 @@ fn main() {
 
         sample_rate_channels.expect("No frames in mp3?").append(float_data)
     };
+    let sample_rate = sample_rate as usize; // Make life easy
 
     println!("{sample_rate}hz, {channels} channels");
+
+    let frames = data.len()/channels;
+    print!("{} min {} sec .{} (msec)\n\n", frames/sample_rate/60, (frames/sample_rate)%60, (frames%sample_rate)*1000/sample_rate);
+
 }
