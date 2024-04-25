@@ -9,7 +9,9 @@ use tuple_utils::Append;
 #[derive(Parser)]
 struct Cli {
     mp3: PathBuf,
-    //output: PathBuf,
+
+    #[arg(short = 'a', long = "ascii", help = "Don't use unicode drawing")]
+    ascii: bool,
 }
 
 fn main() {
@@ -56,6 +58,22 @@ fn main() {
     let frames = data.len()/channels;
     print!("{} min {} sec .{} (msec)\n\n", frames/sample_rate/60, (frames/sample_rate)%60, (frames%sample_rate)*1000/sample_rate);
 
+    let blocks = [
+        [' ', '▖', '▌', '▗', '▄', '▙', '▐', '▟', '█'],
+        [' ', '▘', '▌', '▝', '▀', '▛', '▐', '▜', '█'],
+//      ['0', '1', '2', '3', '4', '5', '6', '7', '8']
+    ];
+
+    /*
+    // Unicode test
+    for row in 0..3 {
+        for col in 0..9 {
+            print!("{} ", blocks[row][col]);
+        }
+        println!("");
+    }
+    */
+
     let (term_width, term_height) = term_size::dimensions().expect("Unable to get term size");
     let pixel_frames = frames / term_width;
     let pixel_count = frames / pixel_frames;
@@ -78,7 +96,7 @@ fn main() {
         for line_idx in 0..height_relative {
             let line_idx = if up { line_idx + 1 } else { height_relative - line_idx };
             for height in &heights {
-                print!("{}", if *height >= line_idx { '#' } else { ' ' } );
+                print!("{}", if *height >= line_idx { if cli.ascii { 'O' } else { '█' } } else { ' ' } );
             }
             println!("");
         }
