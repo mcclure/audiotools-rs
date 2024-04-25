@@ -58,11 +58,11 @@ fn main() {
     let frames = data.len()/channels;
     print!("{} min {} sec .{} (msec)\n\n", frames/sample_rate/60, (frames/sample_rate)%60, (frames%sample_rate)*1000/sample_rate);
 
-    let blocks = [
-        [' ', '▖', '▌', '▗', '▄', '▙', '▐', '▟', '█'],
-        [' ', '▘', '▌', '▝', '▀', '▛', '▐', '▜', '█'],
+//    let blocks = [
+//        [' ', '▖', '▌', '▗', '▄', '▙', '▐', '▟', '█'],
+//        [' ', '▘', '▌', '▝', '▀', '▛', '▐', '▜', '█'],
 //      ['0', '1', '2', '3', '4', '5', '6', '7', '8']
-    ];
+//    ];
 
     /*
     // Unicode test
@@ -104,4 +104,6 @@ fn main() {
     };
     printhalf(false);
     printhalf(true);
+
+    if 0 == term_height%2 { println!(""); }
 }
