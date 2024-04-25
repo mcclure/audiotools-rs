@@ -7,11 +7,19 @@ use minimp3::{Frame, Decoder};
 use tuple_utils::Append;
 
 #[derive(Parser)]
+#[clap(disable_help_flag = true)]
 struct Cli {
+    #[clap(long, action = clap::ArgAction::HelpLong)]
+    help: Option<bool>,
+
     mp3: PathBuf,
     outdir: PathBuf,
 
-    #[arg(short = 'r', long = "framerate", default_value_t=60)]
+    #[arg(short = 'w', long = "width", help = "Pixel width [default: 1920]")]
+    pixel_width: Option<u32>,
+    #[arg(short = 'h', long = "height", help = "Pixel height [default: 1080]")]
+    pixel_height: Option<u32>,
+    #[arg(short = 'r', long = "framerate", help = "Frames per second", default_value_t=60)]
     framerate: usize,
 }
 
@@ -61,10 +69,38 @@ fn main() {
 
     assert!(0==sample_rate%cli.framerate, "{} FPS doesn't divide into sample rate cleanly", cli.framerate);
 
-    std::fs::create_dir_all(cli.outdir).expect("Could not create output dir");
+    std::fs::create_dir_all(cli.outdir.clone()).expect("Could not create output dir");
 
     let vframe_aframes = sample_rate/cli.framerate;
     let vframes = data.len().div_ceil(channels*vframe_aframes);
 
     println!("{vframes} video frames, {vframe_aframes} aframes per vframe");
+
+    let (pixel_width, pixel_height) = match ((cli.pixel_width, cli.pixel_height)) {
+        (None, None) => (1920, 1080),
+        (Some(w), None) => (w, w*9/16),
+        (None, Some(h)) => (h*16/9, h),
+        (Some(w), Some(h)) => (w, h)
+    };
+
+    let mut png_header = mtpng::Header::new();
+    png_header.set_size(pixel_width, pixel_height).expect("Couldn't set png size");
+    png_header.set_color(mtpng::ColorType::Truecolor, 8).expect("Couldn't set png color depth");
+
+    {
+        let max:usize = pixel_width as usize*pixel_height as usize*3;
+        let frame: Vec<u8> = (0..max).map(
+            |x| (x*255/max) as u8 // Meaningless
+        ).collect::<Vec<_>>();
+
+        let mut png_writer = File::create(cli.outdir.clone().join("1.png")).expect("Couldn't create file");
+
+        let mut options = mtpng::encoder::Options::new();
+
+        let mut encoder = mtpng::encoder::Encoder::new(png_writer, &options);
+
+        encoder.write_header(&png_header).expect("Couldn't write header");
+        encoder.write_image_rows(&frame).expect("Couldn't write png");
+        encoder.finish().expect("Couldn't complete png");
+    }
 }
