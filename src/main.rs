@@ -1,3 +1,5 @@
+#![allow(unused_parens)]
+
 use clap::Parser;
 use std::fs::File;
 use std::path::PathBuf;
@@ -47,6 +49,40 @@ fn main() {
 
         sample_rate_channels.expect("No frames in mp3?").append(float_data)
     };
+    let sample_rate = sample_rate as usize; // Make life easy
 
     println!("{sample_rate}hz, {channels} channels");
+
+    let frames = data.len()/channels;
+    print!("{} min {} sec .{} (msec)\n\n", frames/sample_rate/60, (frames/sample_rate)%60, (frames%sample_rate)*1000/sample_rate);
+
+    let (term_width, term_height) = term_size::dimensions().expect("Unable to get term size");
+    let pixel_frames = frames / term_width;
+    let pixel_count = frames / pixel_frames;
+    let height_relative = (term_height-4)/2; 
+    let mut heights:Vec<usize> = Default::default();
+    for pixel in 0..pixel_count {
+        let mut magnitude = 0.0;
+        let offset = pixel*pixel_frames*channels;
+        let samples = channels*if (pixel < pixel_count-1) { pixel_frames } else { pixel_frames + frames % pixel_frames };
+        for idx in offset..(offset+samples) {
+            let sample = data[idx as usize];
+            magnitude += sample*sample;
+        }
+        let height = (magnitude/samples as f32).sqrt()*height_relative as f32;
+        let height_floorplus:usize = height.floor() as usize + 1;
+        heights.push(if height == 0.0 { 0 } else if height_floorplus > height_relative { height_relative } else { height_floorplus });
+    }
+
+    let printhalf = |up| {
+        for line_idx in 0..height_relative {
+            let line_idx = if up { line_idx + 1 } else { height_relative - line_idx };
+            for height in &heights {
+                print!("{}", if *height >= line_idx { '#' } else { ' ' } );
+            }
+            println!("");
+        }
+    };
+    printhalf(false);
+    printhalf(true);
 }
