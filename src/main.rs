@@ -77,7 +77,7 @@ fn main() {
     let (term_width, term_height) = term_size::dimensions().expect("Unable to get term size");
     let pixel_frames = frames / term_width;
     let pixel_count = frames / pixel_frames;
-    let height_relative = (term_height-4)/2; 
+    let height_relative = (term_height-3)/2; // minus two for metadata, minus one for padding, minus one for prompt, plus one for "omitted" row (see below)
     let mut heights:Vec<usize> = Default::default();
     for pixel in 0..pixel_count {
         let mut magnitude = 0.0;
@@ -92,9 +92,10 @@ fn main() {
         heights.push(if height == 0.0 { 0 } else if height_floorplus > height_relative { height_relative } else { height_floorplus });
     }
 
-    let printhalf = |up| {
-        for line_idx in 0..height_relative {
-            let line_idx = if up { line_idx + 1 } else { height_relative - line_idx };
+    let printhalf = |down| {
+        let start = if down { 1 } else { 0 }; // Omit "top" row when drawing on bottom
+        for line_idx in start..height_relative {
+            let line_idx = if down { line_idx + 1 } else { height_relative - line_idx };
             for height in &heights {
                 print!("{}", if *height >= line_idx { if cli.ascii { 'O' } else { '█' } } else { ' ' } );
             }
