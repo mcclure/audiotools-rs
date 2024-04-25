@@ -6,4 +6,5 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.5.4", features = ["derive"] }
 minimp3 = "0.5.1"
+mtpng = "0.3.5"
 tuple_utils = "0.4.0"

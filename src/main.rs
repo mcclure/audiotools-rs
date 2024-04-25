@@ -9,7 +9,10 @@ use tuple_utils::Append;
 #[derive(Parser)]
 struct Cli {
     mp3: PathBuf,
-    //output: PathBuf,
+    outdir: PathBuf,
+
+    #[arg(short = 'r', long = "framerate", default_value_t=60)]
+    framerate: usize,
 }
 
 fn main() {
@@ -53,7 +56,15 @@ fn main() {
 
     println!("{sample_rate}hz, {channels} channels");
 
-    let frames = data.len()/channels;
-    print!("{} min {} sec .{} (msec)\n\n", frames/sample_rate/60, (frames/sample_rate)%60, (frames%sample_rate)*1000/sample_rate);
+    let aframes = data.len()/channels;
+    println!("{} min {} sec .{} (msec)", aframes/sample_rate/60, (aframes/sample_rate)%60, (aframes%sample_rate)*1000/sample_rate);
 
+    assert!(0==sample_rate%cli.framerate, "{} FPS doesn't divide into sample rate cleanly", cli.framerate);
+
+    std::fs::create_dir_all(cli.outdir).expect("Could not create output dir");
+
+    let vframe_aframes = sample_rate/cli.framerate;
+    let vframes = data.len().div_ceil(channels*vframe_aframes);
+
+    println!("{vframes} video frames, {vframe_aframes} aframes per vframe");
 }
