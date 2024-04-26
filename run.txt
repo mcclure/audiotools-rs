@@ -1,0 +1,1 @@
+cargo.exe run --release -- input/sec10.mp3 output/test0/

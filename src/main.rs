@@ -99,7 +99,11 @@ fn main() {
             let basis = vframe_aframes*vframe_idx;
             let read = |idx| {
                 let basis = (basis + idx) * channels;
-                return [data[basis], data[basis+1]];
+                if basis+1<data.len() {
+                    return [data[basis], data[basis+1]];
+                } else {
+                    return [0.,0.];
+                }
             };
             for x in 0..vframe_aframes {
                 let x = x + (pixel_width-vframe_aframes)/2;
@@ -112,7 +116,7 @@ fn main() {
                 }
             }
 
-        let png_writer = File::create(cli.outdir.clone().join(format!("{}.png", vframe_idx+1))).expect("Couldn't create file");
+        let png_writer = File::create(cli.outdir.clone().join(format!("{:08}.png", vframe_idx+1))).expect("Couldn't create file");
 
         let options = mtpng::encoder::Options::new();
 
@@ -122,6 +126,11 @@ fn main() {
         encoder.write_image_rows(&frame).expect("Couldn't write png");
         encoder.finish().expect("Couldn't complete png");
 
-        println!("{}.png", vframe_idx+1);
+        { // Status update
+            let vframe_idx = vframe_idx + 1;
+            if vframe_idx % 10 == 0 || vframe_idx == vframes {
+                println!("{vframe_idx}/{vframes}");
+            }
+        }
     }
 }
