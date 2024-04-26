@@ -21,6 +21,9 @@ struct Cli {
     pixel_height: Option<u32>,
     #[arg(short = 'r', long = "framerate", help = "Frames per second", default_value_t=60)]
     framerate: usize,
+
+    #[arg(long="ffmpeg", help="Path to ffmpeg (for concenience)", default_value="ffmpeg")]
+    ffmpeg: String
 }
 
 fn main() {
@@ -29,7 +32,7 @@ fn main() {
     // Decode all // FIXME: Streaming would be nice but then we can't get a priori length
     let (sample_rate, channels, data) = {
         let mut decoder =
-            Decoder::new(File::open(cli.mp3).expect("Could not open file"));
+            Decoder::new(File::open(cli.mp3.clone()).expect("Could not open file"));
         let mut sample_rate_channels : Option<(i32, usize)> = Default::default();
         let mut float_data: Vec<f32> = Default::default();
 
@@ -105,11 +108,13 @@ fn main() {
                     return [0.,0.];
                 }
             };
+            fn to8(f:f32) -> u8 { (f*127.0 + 127.0) as u8 }
             for x in 0..vframe_aframes {
                 let x = x + (pixel_width-vframe_aframes)/2;
                 for y in 0..pixel_height {
                     let aframe = read(x+y);
-                    let color = [(aframe[0]*127.0 + 127.0) as u8, (aframe[1]*127.0 + 127.0) as u8, ((aframe[0]*aframe[1]).sqrt()*255.0) as u8];
+                    // Also consider: ((aframe[0]*aframe[1]).sqrt()*255.0) as u8
+                    let color = [to8(aframe[0]), to8((aframe[0] + aframe[1])/2.0), to8(aframe[1])];
                     for comp_idx in 0..3 {
                         frame[(x + y*pixel_width)*3+comp_idx] = color[comp_idx];
                     }
@@ -133,4 +138,6 @@ fn main() {
             }
         }
     }
+
+    println!("Run:\n{} -r {} -i {}/%08d.png -i \"{}\" -pix_fmt yuv420p -vcodec libx264 -strict experimental -r {} -acodec copy output/test0.mp4", cli.ffmpeg, cli.framerate, cli.outdir.to_string_lossy(), cli.mp3.to_string_lossy(), cli.framerate);
 }
