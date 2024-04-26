@@ -21,6 +21,10 @@ struct Cli {
     pixel_height: Option<u32>,
     #[arg(short = 'r', long = "framerate", help = "Frames per second", default_value_t=60)]
     framerate: usize,
+    #[arg(short = 'p', long = "padding", help = "FFT padding count (in vframes)", default_value_t=0)]
+    padding: usize,
+    #[arg(long = "window", help = "Window FFT? (hanning)")]
+    window: bool,
 
     #[arg(long="ffmpeg", help="Path to ffmpeg (for concenience)", default_value="ffmpeg")]
     ffmpeg: String
@@ -93,6 +97,16 @@ fn main() {
 
     assert!(channels == 2, "This script assumes stereo");
 
+    let fft_width = vframe_aframes * (1 + cli.padding*2);
+    let fft_out_width = fft_width/2;
+    let mut fft_planner = realfft::RealFftPlanner::<f64>::new();
+    let fft = fft_planner.plan_fft_forward(fft_width);
+
+    let mut fft_in = fft.make_input_vec();
+    let mut fft_out : [_;2] =  std::array::from_fn( |_| fft.make_output_vec() );
+
+    let fft_window:Vec<f64> = if cli.window { apodize::hanning_iter(fft_width).collect::<Vec<f64>>() } else { Default::default() };
+
     for vframe_idx in 0..vframes {
         let max:usize = pixel_width*pixel_height as usize*3;
         let mut frame: Vec<u8> = (0..max).map(
@@ -100,7 +114,38 @@ fn main() {
         ).collect::<Vec<_>>();
 
             let basis = vframe_aframes*vframe_idx;
-            let read = |idx| {
+
+            // Copy "interesting" section of audio into fft_in
+
+            let mut max_pwr = 0.0;
+
+            for channel_idx in 0..2 {
+                for fft_idx in 0..((1+cli.padding as isize)*vframe_aframes as isize) {
+                    // Remove basis + for a surprise
+                    let aframe_idx = basis as isize + fft_idx-cli.padding as isize*vframe_aframes as isize;
+                    let sample_idx = aframe_idx*2 + channel_idx as isize;
+
+                    fft_in[fft_idx as usize] = if sample_idx >= 0 && sample_idx < data.len() as isize {
+                        data[sample_idx as usize] as f64 * if cli.window { fft_window[fft_idx as usize] } else { 1.0 }
+                    } else {
+                        0.0
+                    }
+                }
+
+                fft.process(&mut fft_in, &mut fft_out[channel_idx]).unwrap();
+
+                for fft_idx in 0..fft_out_width {
+                    let pwr = fft_out[channel_idx][fft_idx].norm_sqr();
+                    if !pwr.is_finite() { println!("Frame {vframe_idx} fft {fft_idx} = {}", fft_out[channel_idx][fft_idx]); }
+                    if pwr > max_pwr { max_pwr = pwr; }
+                }
+            }
+
+            if max_pwr < 0.0 { println!("Negative power at {vframe_idx}!"); }
+            max_pwr = max_pwr.log10();
+            if !max_pwr.is_finite() { println!("Infinite power at {vframe_idx}!"); }
+
+            let read_frame_raw = |idx| {
                 let basis = (basis + idx) * channels;
                 if basis+1<data.len() {
                     return [data[basis], data[basis+1]];
@@ -109,14 +154,37 @@ fn main() {
                 }
             };
             fn to8(f:f32) -> u8 { (f*127.0 + 127.0) as u8 }
-            for x in 0..vframe_aframes {
-                let x = x + (pixel_width-vframe_aframes)/2;
-                for y in 0..pixel_height {
-                    let aframe = read(x+y);
-                    // Also consider: ((aframe[0]*aframe[1]).sqrt()*255.0) as u8
-                    let color = [to8(aframe[0]), to8((aframe[0] + aframe[1])/2.0), to8(aframe[1])];
-                    for comp_idx in 0..3 {
-                        frame[(x + y*pixel_width)*3+comp_idx] = color[comp_idx];
+            let to8realclamp = |f:realfft::num_complex::Complex<f64>| -> u8 { (f.norm_sqr().log10()/max_pwr*128.0 + 128.0).min(255.0).max(0.0) as u8 };
+
+            // FFT read
+            for y in 0..fft_out_width {
+                let out_y:isize = y as isize + (pixel_height as isize-fft_out_width as isize)/2;
+                for x in 0..fft_out_width {
+                    let out_x:isize = x as isize + (pixel_width as isize-fft_out_width as isize)/2;
+
+                    if out_x >= 0 && out_x < pixel_width as isize && out_y >= 0 && (out_y as isize) < pixel_height as isize {
+                        let (out_x, out_y) = (out_x as usize, out_y as usize);
+
+                        let color = [fft_out[0][x], fft_out[0][x]+fft_out[1][y], fft_out[1][y]].map(|p|to8realclamp(p));
+                        let frame_basis = (out_x + out_y*pixel_width)*3;
+                        for comp_idx in 0..3 {
+                            frame[frame_basis+comp_idx] = color[comp_idx];
+                        }
+                    }
+                }
+            }
+
+            // Raw/diagonal read
+            if false {
+                for x in 0..vframe_aframes {
+                    let x = x + (pixel_width-vframe_aframes)/2;
+                    for y in 0..pixel_height {
+                        let aframe = read_frame_raw(x+y);
+                        // Also consider: ((aframe[0]*aframe[1]).sqrt()*255.0) as u8
+                        let color = [to8(aframe[0]), to8((aframe[0] + aframe[1])/2.0), to8(aframe[1])];
+                        for comp_idx in 0..3 {
+                            frame[(x + y*pixel_width)*3+comp_idx] = color[comp_idx];
+                        }
                     }
                 }
             }
