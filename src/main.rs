@@ -86,21 +86,42 @@ fn main() {
     let mut png_header = mtpng::Header::new();
     png_header.set_size(pixel_width, pixel_height).expect("Couldn't set png size");
     png_header.set_color(mtpng::ColorType::Truecolor, 8).expect("Couldn't set png color depth");
+    let (pixel_width, pixel_height) = (pixel_width as usize, pixel_height as usize);
 
-    {
-        let max:usize = pixel_width as usize*pixel_height as usize*3;
-        let frame: Vec<u8> = (0..max).map(
-            |x| (x*255/max) as u8 // Meaningless
+    assert!(channels == 2, "This script assumes stereo");
+
+    for vframe_idx in 0..vframes {
+        let max:usize = pixel_width*pixel_height as usize*3;
+        let mut frame: Vec<u8> = (0..max).map(
+            |_| 0 // Meaningless
         ).collect::<Vec<_>>();
 
-        let mut png_writer = File::create(cli.outdir.clone().join("1.png")).expect("Couldn't create file");
+            let basis = vframe_aframes*vframe_idx;
+            let read = |idx| {
+                let basis = (basis + idx) * channels;
+                return [data[basis], data[basis+1]];
+            };
+            for x in 0..vframe_aframes {
+                let x = x + (pixel_width-vframe_aframes)/2;
+                for y in 0..pixel_height {
+                    let aframe = read(x+y);
+                    let color = [(aframe[0]*127.0 + 127.0) as u8, (aframe[1]*127.0 + 127.0) as u8, ((aframe[0]*aframe[1]).sqrt()*255.0) as u8];
+                    for comp_idx in 0..3 {
+                        frame[(x + y*pixel_width)*3+comp_idx] = color[comp_idx];
+                    }
+                }
+            }
 
-        let mut options = mtpng::encoder::Options::new();
+        let png_writer = File::create(cli.outdir.clone().join(format!("{}.png", vframe_idx+1))).expect("Couldn't create file");
+
+        let options = mtpng::encoder::Options::new();
 
         let mut encoder = mtpng::encoder::Encoder::new(png_writer, &options);
 
         encoder.write_header(&png_header).expect("Couldn't write header");
         encoder.write_image_rows(&frame).expect("Couldn't write png");
         encoder.finish().expect("Couldn't complete png");
+
+        println!("{}.png", vframe_idx+1);
     }
 }
