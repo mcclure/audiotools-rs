@@ -113,7 +113,7 @@ fn main() {
     let fft_window:Vec<f64> = if cli.fft_window { apodize::hanning_iter(fft_width).collect::<Vec<f64>>() } else { Default::default() };
 
     let center_square = pixel_width.min(pixel_height);
-    let square_log = (center_square as f32).log10();
+    let square_log = (center_square as f32).sqrt();
 
     let mut max_max_pwr = 0.0;
 
@@ -152,7 +152,7 @@ fn main() {
             }
 
             if max_pwr < 0.0 { println!("Negative power at {vframe_idx}!"); }
-            max_pwr = max_pwr.log10();
+            max_pwr = max_pwr.sqrt();
             if max_pwr > max_max_pwr { max_max_pwr = max_pwr }
             if !max_pwr.is_finite() { println!("Infinite power at {vframe_idx}!"); }
             if let Some(pwr) = cli.fft_max_pwr { max_pwr = pwr; }
