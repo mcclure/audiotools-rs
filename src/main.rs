@@ -22,10 +22,12 @@ struct Cli {
     pixel_height: Option<u32>,
     #[arg(short = 'r', long = "framerate", help = "Frames per second", default_value_t=60)]
     framerate: usize,
+    #[arg(short = 's', long = "scale", help = "FFT scale", default_value_t=1.0)]
+    fft_scale:f32,
     #[arg(short = 'p', long = "padding", help = "FFT padding count (in vframes)", default_value_t=0)]
-    padding: usize,
+    fft_padding: usize,
     #[arg(long = "window", help = "Window FFT? (hanning)")]
-    window: bool,
+    fft_window: bool,
 
     #[arg(long="ffmpeg", help="Path to ffmpeg (for concenience)", default_value="ffmpeg")]
     ffmpeg: String
@@ -98,7 +100,7 @@ fn main() {
 
     assert!(channels == 2, "This script assumes stereo");
 
-    let fft_width = vframe_aframes * (1 + cli.padding*2);
+    let fft_width = vframe_aframes * (1 + cli.fft_padding*2);
     let fft_out_width = fft_width/2;
     let mut fft_planner = realfft::RealFftPlanner::<f64>::new();
     let fft = fft_planner.plan_fft_forward(fft_width);
@@ -106,14 +108,14 @@ fn main() {
     let mut fft_in = fft.make_input_vec();
     let mut fft_out : [_;2] =  std::array::from_fn( |_| fft.make_output_vec() );
 
-    let fft_window:Vec<f64> = if cli.window { apodize::hanning_iter(fft_width).collect::<Vec<f64>>() } else { Default::default() };
+    let fft_window:Vec<f64> = if cli.fft_window { apodize::hanning_iter(fft_width).collect::<Vec<f64>>() } else { Default::default() };
 
     let center_square = pixel_width.min(pixel_height);
     let square_log = (center_square as f32).log10();
 
     for vframe_idx in 0..vframes {
-        let max:usize = pixel_width*pixel_height as usize*3;
-        let mut frame: Vec<u8> = (0..max).map(
+        let frame_max:usize = pixel_width*pixel_height as usize*3;
+        let mut frame: Vec<u8> = (0..frame_max).map(
             |_| 0 // Meaningless
         ).collect::<Vec<_>>();
 
@@ -124,13 +126,13 @@ fn main() {
             let mut max_pwr = 0.0;
 
             for channel_idx in 0..2 {
-                for fft_idx in 0..((1+cli.padding as isize)*vframe_aframes as isize) {
+                for fft_idx in 0..((1+cli.fft_padding as isize)*vframe_aframes as isize) {
                     // Remove basis + for a surprise
-                    let aframe_idx = basis as isize + fft_idx-cli.padding as isize*vframe_aframes as isize;
+                    let aframe_idx = basis as isize + fft_idx-cli.fft_padding as isize*vframe_aframes as isize;
                     let sample_idx = aframe_idx*2 + channel_idx as isize;
 
                     fft_in[fft_idx as usize] = if sample_idx >= 0 && sample_idx < data.len() as isize {
-                        data[sample_idx as usize] as f64 * if cli.window { fft_window[fft_idx as usize] } else { 1.0 }
+                        data[sample_idx as usize] as f64 * if cli.fft_window { fft_window[fft_idx as usize] } else { 1.0 }
                     } else {
                         0.0
                     }
@@ -146,8 +148,9 @@ fn main() {
             }
 
             if max_pwr < 0.0 { println!("Negative power at {vframe_idx}!"); }
-            max_pwr = max_pwr.log10();
+            max_pwr = max_pwr.sqrt();
             if !max_pwr.is_finite() { println!("Infinite power at {vframe_idx}!"); }
+            //println!("{vframe_idx} max power {max_pwr}");
 
             let read_frame_raw = |idx| {
                 let basis = (basis + idx) * channels;
@@ -158,7 +161,7 @@ fn main() {
                 }
             };
             fn to8(f:f32) -> u8 { (f*127.0 + 127.0) as u8 }
-            let to8realclamp = |f:realfft::num_complex::Complex<f64>| -> u8 { (f.norm_sqr().log10()/max_pwr*128.0 + 128.0).min(255.0).max(0.0) as u8 };
+            let to8realclamp = |f:realfft::num_complex::Complex<f64>| -> u8 { (f.norm_sqr().sqrt()/max_pwr*128.0 + 128.0).min(255.0).max(0.0) as u8 };
 
             // FFT read
             for y in 0..center_square {
@@ -168,7 +171,7 @@ fn main() {
 
                     if out_x >= 0 && out_x < pixel_width as isize && out_y >= 0 && (out_y as isize) < pixel_height as isize {
                         let (out_x, out_y) = (out_x as usize, pixel_height - out_y as usize - 1); 
-                        let (x,y) = (x,y).map(|v| (((v as f32).log10().max(0.0)/square_log*fft_out_width as f32) as usize).min(fft_width-1));
+                        let (x,y) = (x,y).map(|v| (((v as f32).log10().max(0.0)/square_log*cli.fft_scale/fft_out_width as f32) as usize).min(fft_width-1));
 
                         let color = [fft_out[0][x], fft_out[0][x]+fft_out[1][y], fft_out[1][y]].map(|p|to8realclamp(p));
                         let frame_basis = (out_x + out_y*pixel_width)*3;
