@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use minimp3::{Frame, Decoder};
 use tuple_utils::Append;
 use tuple_map::*;
+use prisma::FromColor;
 
 #[derive(Parser)]
 #[clap(disable_help_flag = true)]
@@ -30,6 +31,8 @@ struct Cli {
     fft_window: bool,
     #[arg(short = 'm', long = "max-power", help = "Color power scale [default frame-max]")]
     fft_max_pwr: Option<f64>,
+    #[arg(long = "color-rotate", help = "Rotate FFT color hue [default 0]")]
+    fft_color_rotate: Option<f32>,
 
     #[arg(long="ffmpeg", help="Path to ffmpeg (for concenience)", default_value="ffmpeg")]
     ffmpeg: String
@@ -167,7 +170,8 @@ fn main() {
                 }
             };
             fn to8(f:f32) -> u8 { (f*127.0 + 127.0) as u8 }
-            let to8realclamp = |f:realfft::num_complex::Complex<f64>| -> u8 { (f.norm_sqr().log10()/max_pwr*255.0).min(255.0).max(0.0) as u8 };
+            let torealclamp = |f:realfft::num_complex::Complex<f64>| -> f32 { (f.norm_sqr().log10()/max_pwr).min(1.0).max(0.0) as f32 };
+            let _to8realclamp = |f:realfft::num_complex::Complex<f64>| -> u8 { (f.norm_sqr().log10()/max_pwr*255.0).min(255.0).max(0.0) as u8 };
 
             // FFT read
             for y in 0..center_square {
@@ -179,7 +183,18 @@ fn main() {
                         let (out_x, out_y) = (out_x as usize, pixel_height - out_y as usize - 1); 
                         let (x,y) = (x,y).map(|v| (((v as f32).log10().max(0.0)/square_log/cli.fft_scale*fft_out_width as f32) as usize).min(fft_out_width-1));
 
-                        let color = [fft_out[0][x], fft_out[0][x]+fft_out[1][y], fft_out[1][y]].map(|p|to8realclamp(p));
+                        let mut color = [fft_out[0][x], fft_out[0][x]+fft_out[1][y], fft_out[1][y]].map(|p|torealclamp(p));
+                        if let Some(rotate) = cli.fft_color_rotate {
+                            color = {
+                                let color = prisma::Rgb::new(color[0], color[1], color[2]);
+                                let mut color = prisma::Hsv::<f32,angular_units::Deg<_>>::from_color(&color);
+                                color.set_hue( ( color.hue() + angular_units::Deg(rotate) ) % angular_units::Deg(360.0) );
+                                let color = prisma::Rgb::from_color(&color);
+                                [color.red(), color.green(), color.blue()]
+                            }
+                        }
+                        let color = color.map(|x| (x*255.0).min(255.0).max(0.0) as u8);
+
                         let frame_basis = (out_x + out_y*pixel_width)*3;
                         for comp_idx in 0..3 {
                             frame[frame_basis+comp_idx] = color[comp_idx];
