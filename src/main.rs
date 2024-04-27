@@ -8,6 +8,8 @@ use tuple_utils::Append;
 use tuple_map::*;
 use prisma::FromColor;
 
+const DEBUG_UV:bool = false;
+
 #[derive(Parser)]
 #[clap(disable_help_flag = true)]
 struct Cli {
@@ -33,6 +35,10 @@ struct Cli {
     fft_max_pwr: Option<f64>,
     #[arg(long = "color-rotate", help = "Rotate FFT color hue [default 0]")]
     fft_color_rotate: Option<f32>,
+    #[arg(long = "color-swap", help = "Flip red/green")]
+    fft_color_swap: bool,
+    #[arg(long = "color-45", help = "Diamond within square")]
+    fft_color_45: bool,
 
     #[arg(long="ffmpeg", help="Path to ffmpeg (for concenience)", default_value="ffmpeg")]
     ffmpeg: String
@@ -120,7 +126,7 @@ fn main() {
 
     let mut max_max_pwr = 0.0;
 
-    for vframe_idx in 0..vframes {
+    for vframe_idx in 0..(if !DEBUG_UV { vframes } else { 1 }) {
         let frame_max:usize = pixel_width*pixel_height as usize*3;
         let mut frame: Vec<u8> = (0..frame_max).map(
             |_| 0 // Meaningless
@@ -180,20 +186,44 @@ fn main() {
                     let out_x:isize = x as isize + (pixel_width as isize-center_square as isize)/2;
 
                     if out_x >= 0 && out_x < pixel_width as isize && out_y >= 0 && (out_y as isize) < pixel_height as isize {
-                        let (out_x, out_y) = (out_x as usize, pixel_height - out_y as usize - 1); 
-                        let (x,y) = (x,y).map(|v| (((v as f32).log10().max(0.0)/square_log/cli.fft_scale*fft_out_width as f32) as usize).min(fft_out_width-1));
+                        let (out_x, out_y) = (out_x as usize, pixel_height - out_y as usize - 1);
 
-                        let mut color = [fft_out[0][x], fft_out[0][x]+fft_out[1][y], fft_out[1][y]].map(|p|torealclamp(p));
-                        if let Some(rotate) = cli.fft_color_rotate {
-                            color = {
-                                let color = prisma::Rgb::new(color[0], color[1], color[2]);
-                                let mut color = prisma::Hsv::<f32,angular_units::Deg<_>>::from_color(&color);
-                                color.set_hue( ( color.hue() + angular_units::Deg(rotate) ) % angular_units::Deg(360.0) );
-                                let color = prisma::Rgb::from_color(&color);
-                                [color.red(), color.green(), color.blue()]
+                        let (x,y) = (x,y).map(|v| v as f32);
+
+                        let (x,y) = if cli.fft_color_45 {
+                            let half = (center_square as f32)/2.0;
+                            let y = y - half;
+                            let (x,y) = (x+y, x-y); //.map(|v| v/std::f32::consts::SQRT_2 );
+                            (x,y)
+                        } else { (x,y) };
+
+                        // Note x,y is modified here without "escaping"
+                        let color = if !DEBUG_UV {
+                            let (x,y) = (x,y).map(|v| ((v.log10().max(0.0)/square_log/cli.fft_scale*fft_out_width as f32) as usize).min(fft_out_width-1));
+
+                            let mut color = [fft_out[0][x], fft_out[0][x]+fft_out[1][y], fft_out[1][y]].map(|p|torealclamp(p));
+                            if cli.fft_color_swap {
+                                color = [color[2], color[1], color[0]];
                             }
-                        }
-                        let color = color.map(|x| (x*255.0).min(255.0).max(0.0) as u8);
+                            if let Some(rotate) = cli.fft_color_rotate {
+                                color = {
+                                    let color = prisma::Rgb::new(color[0], color[1], color[2]);
+                                    let mut color = prisma::Hsv::<f32,angular_units::Deg<_>>::from_color(&color);
+                                    color.set_hue( ( color.hue() + angular_units::Deg(rotate) ) % angular_units::Deg(360.0) );
+                                    let color = prisma::Rgb::from_color(&color);
+                                    [color.red(), color.green(), color.blue()]
+                                }
+                            }
+                            let color = color.map(|x| (x*255.0).min(255.0).max(0.0) as u8);
+
+                            color
+                        } else {
+                            let top = (center_square-1) as f32;
+                            let (r,g) = (x*255.0/center_square as f32, y*255.0/center_square as f32).map(|v| v.min(255.0).max(0.0) as u8);
+                            let color = [r,g, if x<=0.0 || y<=0.0 || x >= top || y >= top { 255 } else { 0 }];
+
+                            color
+                        };
 
                         let frame_basis = (out_x + out_y*pixel_width)*3;
                         for comp_idx in 0..3 {
