@@ -9,4 +9,4 @@ ffprobe -v error -select_streams v:0 -show_entries stream=avg_frame_rate -of def
 -vf scale=640:-1
 
 
-cargo.exe run --release -- input/sec10.mp3 output/test0 --ffmpeg=/mnt/c/Users/Andi/ffmpeg/bin/ffmpeg.exe -r 30 -p 3 --window -m 3 --color-rotate 160 --color-swap --color-45 && /mnt/c/Users/Andi/ffmpeg/bin/ffmpeg.exe -r 30 -i output/test1/%08d.png -i "input/The Mathletes - 17.mp3" -pix_fmt yuv420p -vcodec libx264 -strict experimental -r 30 -acodec copy output/test1.mp4 -y
+cargo.exe run --release -- "input/The Mathletes - 17.mp3" output/test1 --ffmpeg=/mnt/c/Users/Andi/ffmpeg/bin/ffmpeg.exe -r 30 -p 3 --window -m 3 --color-rotate 160 --color-swap --color-45 && /mnt/c/Users/Andi/ffmpeg/bin/ffmpeg.exe -r 30 -i output/test1/%08d.png -i "input/The Mathletes - 17.mp3" -pix_fmt yuv420p -vcodec libx264 -strict experimental -r 30 -acodec copy output/test1.mp4 -y
