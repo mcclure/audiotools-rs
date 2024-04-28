@@ -124,6 +124,8 @@ fn main() {
     let center_square = pixel_width.min(pixel_height);
     let square_log = (center_square as f32).sqrt();
 
+    let fullscreen = cli.fft_color_45; // Later may this may be settable independently
+
     let mut max_max_pwr = 0.0;
 
     for vframe_idx in 0..(if !DEBUG_UV { vframes } else { 1 }) {
@@ -180,10 +182,12 @@ fn main() {
             let _to8realclamp = |f:realfft::num_complex::Complex<f64>| -> u8 { (f.norm_sqr().log10()/max_pwr*255.0).min(255.0).max(0.0) as u8 };
 
             // FFT read
-            for y in 0..center_square {
-                let out_y:isize = y as isize + (pixel_height as isize-center_square as isize)/2;
-                for x in 0..center_square {
-                    let out_x:isize = x as isize + (pixel_width as isize-center_square as isize)/2;
+            for y in 0..(if fullscreen { pixel_height } else { center_square }) {
+                let offset_y = (pixel_height as isize-center_square as isize)/2;
+                let out_y:isize = y as isize + if fullscreen { 0 } else { offset_y };
+                for x in 0..(if fullscreen { pixel_width } else { center_square }) {
+                    let offset_x = (pixel_width as isize-center_square as isize)/2;
+                    let out_x:isize = x as isize + if fullscreen { 0 } else { offset_x };
 
                     if out_x >= 0 && out_x < pixel_width as isize && out_y >= 0 && (out_y as isize) < pixel_height as isize {
                         let (out_x, out_y) = (out_x as usize, pixel_height - out_y as usize - 1);
@@ -192,10 +196,17 @@ fn main() {
 
                         let (x,y) = if cli.fft_color_45 {
                             let half = (center_square as f32)/2.0;
-                            let y = y - half;
-                            let (x,y) = (x+y, x-y); //.map(|v| v/std::f32::consts::SQRT_2 );
+                            //let (x, y) = (x + half, y + half); // Move center of square to 0,0
+                            // X let (x,y) = (x*2.0, y*2.0);
+                            // Formula: https://www.wolframalpha.com/input?i=rotate+%28360-45%29+degrees
+                            let (x,y) = (x+y, y-x).map(|v| v ); // Rotate 45deg (WHY NO SCALE??? WHY ADDITIONAL OFFSET??)
+                            let (x,y) = (x - half, y + half); // Move +x in old coordinate system
+                            let (x,y) = (x - offset_x as f32, y + offset_x as f32); // Move +x in old coordinate system
+                            // HOW TO DO OFFSET_Y ??
                             (x,y)
                         } else { (x,y) };
+
+                        //let (x,y) = if fullscreen { (x + offset_x as f32, y + offset_y as f32) } else { (x,y) };
 
                         // Note x,y is modified here without "escaping"
                         let color = if !DEBUG_UV {
