@@ -86,7 +86,7 @@ fn main() {
     println!("{sample_rate}hz, {channels} channels per sample");
 
     let frames = data.len()/channels;
-    println!("{} min {} sec .{} (msec)\n", frames/sample_rate/60, (frames/sample_rate)%60, (frames%sample_rate)*1000/sample_rate);
+    println!("{} min {} sec .{} (msec)", frames/sample_rate/60, (frames/sample_rate)%60, (frames%sample_rate)*1000/sample_rate);
 
     print!("{} samples, left channel only:\n\n", frames);
 
@@ -99,7 +99,9 @@ fn main() {
 
     let (term_width, term_height) = term_size::dimensions().expect("Unable to get term size");
 
-    for c in 0..cli.count {
+    let count = if (cli.count > 0) { cli.count } else { frames };
+
+    for c in 0..count {
         let idx = cli.offset + c;
         if idx > frames { break; }
         let idx = idx * channels;
