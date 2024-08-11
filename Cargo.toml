@@ -1,5 +1,5 @@
 [package]
-name = "mp3view"
+name = "mp3dump"
 version = "0.1.0"
 edition = "2021"
 
