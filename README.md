@@ -1,10 +1,11 @@
-Simple Rust wrapper for minimp3 prints rough ASCII art of an mp3's waveform/power over time. Usage:
+Simple Rust wrapper for minimp3/hound prints each individual sample of an mp3/wav. Usage:
 
-    mp3view filename.mp3
+    mp3dump filename.mp3
 
-To force ASCII (maybe if your terminal doesn't like unicode)
+To show as hex or decimal:
 
-    mp3view filename.mp3 -a
+    mp3dump filename.mp3 -x
+    mp3dump filename.mp3 -d
 
 To build, install Rust, then run `cargo build --release` and the exe will appear in `target/release`.
 
