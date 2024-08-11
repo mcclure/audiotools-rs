@@ -100,6 +100,6 @@ fn main() {
             print!("{:.06}", sample as f32/std::i16::MAX as f32);
             chars += 8;
         }
+        println!("");
     }
-    println!("");
 }
