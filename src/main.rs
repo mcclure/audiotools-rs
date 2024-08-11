@@ -14,6 +14,18 @@ struct Cli {
 
     #[arg(short = 'a', long = "ascii", help = "Don't use unicode drawing")]
     ascii: bool,
+
+    #[arg(short = 'x', long = "hex", help = "Hex integer rather than float")]
+    hex: bool,
+
+    #[arg(short = 'd', long = "decimal", help = "Decimal integer rather than float")]
+    dec: bool,
+
+    #[arg(short = 'o', long = "offset", help = "Start at this sample", default_value_t = 0)]
+    offset: usize,
+
+    #[arg(short = 'c', long = "count", help = "Samples to print (0 for all)", default_value_t = 0)]
+    count: usize
 }
 
 fn main() {
@@ -26,7 +38,9 @@ fn main() {
         let mut decoder =
             Decoder::new(File::open(cli.mp3.clone()).expect("Could not open file"));
         let mut sample_rate_channels : Option<(i32, usize)> = Default::default();
-        let mut float_data: Vec<f32> = Default::default();
+        let mut all_data: Vec<i16> = Default::default();
+
+        assert!(!(cli.hex && cli.dec), "Can't pass --dec and --hex at once.");
 
         loop {
             match decoder.next_frame() {
@@ -41,11 +55,11 @@ fn main() {
                             sample_rate_channels = Some((sample_rate, channels))
                         }
                         Some(sample_rate_channels) => {
-                            std::assert!(sample_rate_channels == (sample_rate, channels), "Sample rate or channels changed? At sample {}, was {sample_rate_channels:?}, now ({sample_rate}, {channels})", float_data.len());
+                            std::assert!(sample_rate_channels == (sample_rate, channels), "Sample rate or channels changed? At sample {}, was {sample_rate_channels:?}, now ({sample_rate}, {channels})", all_data.len());
                         }
                     }
                     for sample in data {
-                        float_data.push(i2f(sample));
+                        all_data.push(sample);
                     }
                 },
                 Err(minimp3::Error::Eof) => break,
@@ -54,7 +68,7 @@ fn main() {
         }
 
         if let Some(tuple) = sample_rate_channels {
-            tuple.append(float_data)
+            tuple.append(all_data)
         } else {
             // Not an mp3?
             let mut reader = hound::WavReader::open(cli.mp3)
@@ -63,63 +77,45 @@ fn main() {
             let samples = reader.samples::<i16>();
 
             (spec.sample_rate as i32, spec.channels as usize,
-                samples.map(|x| i2f(x.expect("Invalid sample in wav"))).collect()
+                samples.map(|x| x.expect("Invalid sample in wav")).collect()
             )
         }
     };
     let sample_rate = sample_rate as usize; // Make life easy
 
-    println!("{sample_rate}hz, {channels} channels");
+    println!("{sample_rate}hz, {channels} channels per sample");
 
     let frames = data.len()/channels;
-    print!("{} min {} sec .{} (msec)\n\n", frames/sample_rate/60, (frames/sample_rate)%60, (frames%sample_rate)*1000/sample_rate);
+    println!("{} min {} sec .{} (msec)\n", frames/sample_rate/60, (frames/sample_rate)%60, (frames%sample_rate)*1000/sample_rate);
 
-//    let blocks = [
-//        [' ', '▖', '▌', '▗', '▄', '▙', '▐', '▟', '█'],
-//        [' ', '▘', '▌', '▝', '▀', '▛', '▐', '▜', '█'],
-//      ['0', '1', '2', '3', '4', '5', '6', '7', '8']
-//    ];
+    print!("{} samples, left channel only:\n\n", frames);
 
-    /*
-    // Unicode test
-    for row in 0..3 {
-        for col in 0..9 {
-            print!("{} ", blocks[row][col]);
+    // Unicode, ASCII
+    let blocks = [
+        [' ', '▌', '█'],
+        [' ', ' ', '#']
+    ];
+
+
+    let (term_width, term_height) = term_size::dimensions().expect("Unable to get term size");
+
+    for c in 0..cli.count {
+        let idx = cli.offset + c;
+        if idx > frames { break; }
+        let idx = idx * channels;
+        let sample = data[idx];
+        print!("{c:>10}: ");
+        let mut chars = 12;
+        if cli.dec {
+            print!("{sample:>6}");
+            chars += 6;
+        } else if cli.hex {
+            print!("{sample:05x}");
+            chars += 5;
+        } else {
+            print!("{:.06}", i2f(sample));
+            chars += 8;
         }
         println!("");
     }
-    */
-
-    let (term_width, term_height) = term_size::dimensions().expect("Unable to get term size");
-    let pixel_frames = frames / term_width;
-    let pixel_count = frames / pixel_frames;
-    let height_relative = (term_height-3)/2; // minus two for metadata, minus one for padding, minus one for prompt, plus one for "omitted" row (see below)
-    let mut heights:Vec<usize> = Default::default();
-    for pixel in 0..pixel_count {
-        let mut magnitude = 0.0;
-        let offset = pixel*pixel_frames*channels;
-        let samples = channels*if (pixel < pixel_count-1) { pixel_frames } else { pixel_frames + frames % pixel_frames };
-        for idx in offset..(offset+samples) {
-            let sample = data[idx as usize];
-            magnitude += sample*sample;
-        }
-        let height = (magnitude/samples as f32).sqrt()*height_relative as f32;
-        let height_floorplus:usize = height.floor() as usize + 1;
-        heights.push(if height == 0.0 { 0 } else if height_floorplus > height_relative { height_relative } else { height_floorplus });
-    }
-
-    let printhalf = |down| {
-        let start = if down { 1 } else { 0 }; // Omit "top" row when drawing on bottom
-        for line_idx in start..height_relative {
-            let line_idx = if down { line_idx + 1 } else { height_relative - line_idx };
-            for height in &heights {
-                print!("{}", if *height >= line_idx { if cli.ascii { 'O' } else { '█' } } else { ' ' } );
-            }
-            println!("");
-        }
-    };
-    printhalf(false);
-    printhalf(true);
-
-    if 0 == term_height%2 { println!(""); }
 }
