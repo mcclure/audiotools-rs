@@ -5,6 +5,8 @@ use std::fs::File;
 use std::path::PathBuf;
 use minimp3::{Frame, Decoder};
 use tuple_utils::Append;
+use hound;
+
 
 #[derive(Parser)]
 struct Cli {
@@ -17,10 +19,12 @@ struct Cli {
 fn main() {
     let cli = Cli::parse();
 
+    let i2f = |sample| sample as f32/std::i16::MAX as f32;
+
     // Decode all // FIXME: Streaming would be nice but then we can't get a priori length
     let (sample_rate, channels, data) = {
         let mut decoder =
-            Decoder::new(File::open(cli.mp3).expect("Could not open file"));
+            Decoder::new(File::open(cli.mp3.clone()).expect("Could not open file"));
         let mut sample_rate_channels : Option<(i32, usize)> = Default::default();
         let mut float_data: Vec<f32> = Default::default();
 
@@ -41,7 +45,7 @@ fn main() {
                         }
                     }
                     for sample in data {
-                        float_data.push(sample as f32/std::i16::MAX as f32);
+                        float_data.push(i2f(sample));
                     }
                 },
                 Err(minimp3::Error::Eof) => break,
@@ -49,7 +53,19 @@ fn main() {
             }
         }
 
-        sample_rate_channels.expect("No frames in mp3?").append(float_data)
+        if let Some(tuple) = sample_rate_channels {
+            tuple.append(float_data)
+        } else {
+            // Not an mp3?
+            let mut reader = hound::WavReader::open(cli.mp3)
+                .map_err(|_| ()).expect("File is not a readable mp3 or wav");
+            let spec = reader.spec();
+            let samples = reader.samples::<i16>();
+
+            (spec.sample_rate as i32, spec.channels as usize,
+                samples.map(|x| i2f(x.expect("Invalid sample in wav"))).collect()
+            )
+        }
     };
     let sample_rate = sample_rate as usize; // Make life easy
 
